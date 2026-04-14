@@ -1,0 +1,184 @@
+RELEASE WATCHER — HOW TO USE
+=======================================
+
+What it does:
+  Watches any manga, anime, or numbered release page and automatically
+  opens your browser the moment a new one is available. No more refreshing.
+
+Requirements:
+  - Node.js 18 or higher (https://nodejs.org)
+  - That's it — everything else sets itself up on first run.
+
+─────────────────────────────────────────────
+FIRST TIME SETUP
+─────────────────────────────────────────────
+
+1. Put release.js anywhere on your PC (e.g. Desktop\ReleaseWatcher)
+2. Open PowerShell or CMD
+3. Navigate to the folder:
+     cd "C:\Users\YourName\Desktop\ReleaseWatcher"
+4. Run:
+     node release.js
+5. The script installs its dependencies and shows the main menu.
+
+─────────────────────────────────────────────
+NAVIGATION
+─────────────────────────────────────────────
+
+At any menu prompt (>) you can:
+  - Type a number and press Enter to select an option
+  - Type b and press Enter to go back to the previous menu
+
+─────────────────────────────────────────────
+MAIN MENU
+─────────────────────────────────────────────
+
+[1] Add new       → Save a new manga, anime, or any numbered page
+[2] Watch         → Start watching one, a group, or everything
+[3] Manage        → Edit, delete, and organize entries and groups
+[4] Settings      → Change the check interval and color theme
+[b] Exit
+
+─────────────────────────────────────────────
+ADDING A NEW ENTRY
+─────────────────────────────────────────────
+
+Select [1] Add new from the main menu.
+
+You will be asked for:
+  - Nickname     → a short name you choose (e.g. onepiece, berserk)
+  - URL          → the full URL of the current chapter/episode
+  - Number       → the current chapter or episode number
+  - Check method → how the script detects a new release (see below)
+
+─────────────────────────────────────────────
+CHECK METHODS
+─────────────────────────────────────────────
+
+Different sites work differently. Pick the method that fits:
+
+[1] Title number check (default)
+      Fetches the next URL and reads the page <title>.
+      A release is detected when the title contains a higher number.
+      Works for: TCB Scans, most manga reader sites.
+
+      Example:
+        URL:    https://tcbonepiecechapters.com/chapters/7975/one-piece-chapter-1179
+        Number: 1179
+        → checks .../one-piece-chapter-1180, reads title, looks for 1180
+
+[2] Content absent check
+      The next page already exists, but a specific text signals "not yet".
+      A release is detected when that text DISAPPEARS from the page.
+      You provide the text to watch for.
+
+      Example:
+        URL:         https://onepiece.tube/anime/folge/1156
+        Number:      1155
+        Absent text: keine Streams gefunden
+        → as long as that text is on the page, nothing is out yet
+
+[3] Content present check
+      A release is detected when a specific text APPEARS on the page.
+      You provide the text to watch for.
+
+      Example:
+        Text: Stream verfügbar
+        → watches the fixed URL until that text shows up
+
+[4] HTTP status check
+      The simplest method. 404 means not out yet, 200 means it's out.
+      Works for sites that cleanly return 404 for pages that don't exist yet.
+
+─────────────────────────────────────────────
+WATCHING
+─────────────────────────────────────────────
+
+Select [2] Watch from the main menu, then:
+
+  [1] Resume single   → pick one or more saved entries to watch
+  [2] Watch group     → watch all entries in a saved group at once
+  [3] Watch all       → watch every saved entry simultaneously
+
+Multiple watchers run in parallel — each checks independently.
+
+─────────────────────────────────────────────
+KEYBOARD SHORTCUTS (while watching)
+─────────────────────────────────────────────
+
+  R → Check now (skip the wait, trigger an immediate check)
+  M → Stop all watchers, go back to the main menu
+  Q → Stop all watchers, exit the script
+
+─────────────────────────────────────────────
+QUICK START (once an entry is saved)
+─────────────────────────────────────────────
+
+Skip the menu entirely by passing the nickname directly:
+
+  node release.js onepiece
+  node release.js berserk
+
+─────────────────────────────────────────────
+GROUPS
+─────────────────────────────────────────────
+
+Groups let you watch multiple entries at once with one command.
+
+To create a group:
+  Go to Manage → Groups → Create group
+  Enter a name (e.g. onepiece-all) and add entries one by one.
+
+To watch a group:
+  Go to Watch → Watch group → enter the group name.
+
+Example group:
+  onepiece-all → onepiece, onepiece-anime
+
+─────────────────────────────────────────────
+MANAGING ENTRIES
+─────────────────────────────────────────────
+
+Go to Manage → Entries:
+
+  List all     → shows all saved entries with last number and URL
+  Edit entry   → select a nickname, then:
+                   [1] Update URL
+                   [2] Update number
+                   [3] Rename nickname
+  Delete entry → removes entry from state and from any groups
+
+─────────────────────────────────────────────
+SETTINGS
+─────────────────────────────────────────────
+
+Go to Settings:
+
+  [1] Change check interval
+        Default is 2 minutes. Enter any number greater than 0.
+        Applies to all future watcher sessions.
+
+  [2] Change theme
+        Choose a color theme for the terminal UI:
+          [1] Green
+          [2] Purple  (default)
+          [3] Blue
+          [4] White (no color)
+        Saved and applied automatically on next launch.
+
+─────────────────────────────────────────────
+IMPORTANT NOTES
+─────────────────────────────────────────────
+
+- Leave the terminal open in the background — the browser opens automatically.
+- State is saved to state.json — closing and reopening picks up where you left off.
+- If you move release.js to a new folder, run node release.js once —
+  it will reinstall its dependencies automatically.
+- Existing state.json from ChapterWatcher is migrated automatically
+  (lastChapter → lastNumber).
+
+─────────────────────────────────────────────
+HOW TO STOP
+─────────────────────────────────────────────
+
+Press Q while watching, or Ctrl+C at any time.
