@@ -60,6 +60,19 @@ function applyTheme(name) {
 // ── State ─────────────────────────────────────────────────────────────────────
 
 const STATE_FILE = path.join(__dirname, 'state.json');
+const ERRORS_FILE = path.join(__dirname, 'errors.json');
+
+function appendErrorLog(nickname, error) {
+    let entries;
+    try {
+        entries = JSON.parse(fs.readFileSync(ERRORS_FILE, 'utf8'));
+    } catch {
+        entries = [];
+    }
+    if (entries.length >= 500) entries = entries.slice(250);
+    entries.push({ts: new Date().toISOString(), nickname, error});
+    fs.writeFileSync(ERRORS_FILE, JSON.stringify(entries, null, 2));
+}
 
 function loadState() {
     try {
@@ -149,7 +162,8 @@ function extractNumberFromTitle(title) {
 // ── Watcher ───────────────────────────────────────────────────────────────────
 
 async function checkForNewRelease(ws) {
-    const usesNextUrl = !ws.method || ws.method === 'title-number' || ws.method === 'http-status';
+    const methods = ws.methods || ['title-number'];
+    const usesNextUrl = methods.some(m => m === 'title-number' || m === 'http-status');
     const url = usesNextUrl ? buildNextUrl(ws.url, ws.lastNumber) : ws.url;
 
     try {
@@ -157,29 +171,33 @@ async function checkForNewRelease(ws) {
         if (response.status !== 200) return false;
         let found = false;
         let foundNumber = ws.lastNumber + 1;
+        const needsBody = methods.some(m => m !== 'http-status');
+        const htmlCache = needsBody ? await response.text() : null;
 
-        switch (ws.method) {
-            case 'content-absent':
-                found = response.ok && !(await response.text()).includes(ws.absentText);
-                break;
-            case 'content-present':
-                found = response.ok && (await response.text()).includes(ws.presentText);
-                break;
-            case 'http-status':
-                found = response.status === 200;
-                break;
-            default: { // title-number
-                const html = await response.text();
-                const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-                if (!titleMatch) return false;
-                const extracted = extractNumberFromTitle(titleMatch[1].trim());
-                if (extracted !== null && extracted - ws.lastNumber > 50) return false;
-                if (extracted !== null && extracted > ws.lastNumber) {
+        for (const method of methods) {
+            switch (method) {
+                case 'content-absent':
+                    if (!htmlCache.includes(ws.absentText)) { found = true; }
+                    break;
+                case 'content-present':
+                    if (htmlCache.includes(ws.presentText)) { found = true; }
+                    break;
+                case 'http-status':
                     found = true;
-                    foundNumber = extracted;
+                    break;
+                default: { // title-number
+                    const titleMatch = htmlCache.match(/<title[^>]*>([^<]+)<\/title>/i);
+                    if (!titleMatch) break;
+                    const extracted = extractNumberFromTitle(titleMatch[1].trim());
+                    if (extracted !== null && extracted - ws.lastNumber > 50) break;
+                    if (extracted !== null && extracted > ws.lastNumber) {
+                        found = true;
+                        foundNumber = extracted;
+                    }
+                    break;
                 }
-                break;
             }
+            if (found) break;
         }
 
         if (found) {
@@ -199,7 +217,11 @@ async function checkForNewRelease(ws) {
         }
     } catch (err) {
         stopSpinner();
-        console.error(red + `✗ ${bold}${ws.nickname}${reset}${red}: ${err.message}` + reset);
+        const now = new Date();
+        const ts = now.toTimeString().slice(0, 8);
+        const errLabel = err.constructor && err.constructor.name !== 'Error' ? err.constructor.name : 'Error';
+        console.error(red + `[${ts}] ✗ ${bold}${ws.nickname}${reset}${red} — ${errLabel}: ${err.message}` + reset);
+        appendErrorLog(ws.nickname, `${errLabel}: ${err.message}`);
     }
     return false;
 }
@@ -208,8 +230,9 @@ function startWatcher(nickname, url, lastNumber) {
     const state = loadState();
     const intervalMs = (state.settings.intervalMinutes || 2) * 60 * 1000;
     const entry = state.entries[nickname] || {};
+    const methods = entry.methods || (entry.method ? [entry.method] : ['title-number']);
     const ws = {
-        nickname, url, lastNumber, method: entry.method || 'title-number',
+        nickname, url, lastNumber, methods,
         absentText: entry.absentText, presentText: entry.presentText
     };
 
@@ -414,16 +437,19 @@ async function menuAddNew() {
     console.log(yellow + `  ${bold}[2]${reset}${yellow} Content absent check` + reset);
     console.log(yellow + `  ${bold}[3]${reset}${yellow} Content present check` + reset);
     console.log(yellow + `  ${bold}[4]${reset}${yellow} HTTP status check` + reset);
+    console.log(yellow + '  Enter one or more numbers separated by commas (e.g. 1,3)' + reset);
     console.log();
-    const mc = await ask(yellow + '> ' + reset);
-    const method = {
-        '1': 'title-number',
-        '2': 'content-absent',
-        '3': 'content-present',
-        '4': 'http-status'
-    }[mc] || 'title-number';
+    const methodMap = {'1': 'title-number', '2': 'content-absent', '3': 'content-present', '4': 'http-status'};
+    let methods;
+    while (true) {
+        const mc = await ask(yellow + '> ' + reset);
+        const picked = mc.split(',').map(s => s.trim()).filter(s => methodMap[s]).map(s => methodMap[s]);
+        const unique = [...new Set(picked)];
+        if (unique.length > 0) { methods = unique; break; }
+        console.log(red + 'Select at least one valid method. Try again.' + reset);
+    }
 
-    const needsNumber = method === 'title-number' || method === 'http-status';
+    const needsNumber = methods.some(m => m === 'title-number' || m === 'http-status');
     const urlRegex = needsNumber ? /^https?:\/\/.+\d+/ : /^https?:\/\/.+/;
     const urlErr = needsNumber
         ? 'Invalid URL. Must start with http(s):// and contain a number in the path. Try again.'
@@ -444,10 +470,10 @@ async function menuAddNew() {
         console.log(red + `"${raw}" is not a valid number. Try again.` + reset);
     }
 
-    const entry = {url, lastNumber, method};
-    if (method === 'content-absent')
+    const entry = {url, lastNumber, methods};
+    if (methods.includes('content-absent'))
         entry.absentText = await ask(yellow + 'Text that means "not yet released": ' + reset);
-    else if (method === 'content-present')
+    if (methods.includes('content-present'))
         entry.presentText = await ask(yellow + 'Text that means "released": ' + reset);
 
     state.entries[nickname] = entry;

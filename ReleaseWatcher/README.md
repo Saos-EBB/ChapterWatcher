@@ -168,6 +168,21 @@ ReleaseWatcher/
 ```
 
 ---
+## Contributing
+
+This is a personal userscript tailored to my own needs — no active development roadmap.
+
+That said, feel free to:
+
+- 🐛 [Open an issue](https://github.com/Saos-EBB/AniScript/issues) if you find a bug
+- 💡 [Start a discussion](https://github.com/Saos-EBB/AniScript/discussions) if you have a feature request or suggestion
+- 🍴 Fork the repo and adapt it to your own needs (GPL-3.0)
+
+I'll have a look when I find the time.
+
+
+---
+
 
 ## Author
 
