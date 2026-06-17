@@ -36,7 +36,7 @@ async function checkAll(list) {
                 const body = await res.text();
                 const titleTag = body.match(/<title[^>]*>([^<]*)<\/title>/i);
                 const title = titleTag ? titleTag[1] : '';
-                if (!new RegExp(`\\b${nextNum}\\b`).test(title)) {
+                if (/\d/.test(title) && !new RegExp(`\\b${nextNum}\\b`).test(title)) {
                     console.log(C + `  · ${m.name}: not yet  (checked chapter ${nextNum}, got ${res.status})` + R);
                     continue;
                 }
