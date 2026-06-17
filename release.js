@@ -32,20 +32,14 @@ async function checkAll(list) {
         try {
             const res = await fetch(next, { signal: AbortSignal.timeout(10000) });
             const nextNum = m.chapter + 1;
-            if (res.status === 200 && res.url === next) {
-                const body = await res.text();
-                const titleTag = body.match(/<title[^>]*>([^<]*)<\/title>/i);
-                const title = titleTag ? titleTag[1] : '';
-                if (/\d/.test(title) && !new RegExp(`\\b${nextNum}\\b`).test(title)) {
-                    console.log(C + `  · ${m.name}: not yet  (checked chapter ${nextNum}, got ${res.status})` + R);
-                    continue;
-                }
+            const urlChapter = res.url.match(/\/chapter-(\d+)/);
+            if (res.status === 200 && urlChapter && parseInt(urlChapter[1]) === nextNum) {
                 console.log(G + B + `  ✓ ${m.name}: Chapter ${nextNum} is OUT!` + R);
-                console.log(C + `    → ${next}` + R);
+                console.log(C + `    → ${res.url}` + R);
                 m.chapter = nextNum;
-                m.url = next;
+                m.url = res.url;
                 updated = true;
-                openUrl(next);
+                openUrl(res.url);
             } else {
                 console.log(C + `  · ${m.name}: not yet  (checked chapter ${nextNum}, got ${res.status})` + R);
             }
