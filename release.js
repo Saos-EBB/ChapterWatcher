@@ -30,7 +30,10 @@ async function checkAll(list) {
         const next = buildNextUrl(m.url, m.chapter);
         if (!next) { console.log(RE + `  ✗ ${m.name}: can't build next URL` + R); continue; }
         try {
-            const res = await fetch(next, { signal: AbortSignal.timeout(10000) });
+            const res = await fetch(next, {
+                signal: AbortSignal.timeout(10000),
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' }
+            });
             const nextNum = m.chapter + 1;
             const urlChapter = res.url.match(/\/chapter-(\d+)/);
             if (res.status === 200 && urlChapter && parseInt(urlChapter[1]) === nextNum) {
