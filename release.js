@@ -1,18 +1,10 @@
-// Run: node release.js
+// Run: node release.js  (requires Node.js 18+)
 const fs   = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
-
-const PKG   = path.join(__dirname, 'package.json');
-const MODS  = path.join(__dirname, 'node_modules');
-const DATA  = path.join(__dirname, 'mangas.json');
-
-if (!fs.existsSync(PKG))  fs.writeFileSync(PKG, JSON.stringify({ dependencies: { 'node-fetch': '^2.7.0' } }, null, 2));
-if (!fs.existsSync(MODS)) { console.log('Installing...'); execSync('npm install', { cwd: __dirname, stdio: 'inherit' }); }
-
-const fetch = require('node-fetch');
-const rl    = require('readline');
+const rl   = require('readline');
 const { exec } = require('child_process');
+
+const DATA = path.join(__dirname, 'mangas.json');
 
 function openUrl(url) {
     exec(`start "" "${url}"`);
@@ -38,16 +30,24 @@ async function checkAll(list) {
         const next = buildNextUrl(m.url, m.chapter);
         if (!next) { console.log(RE + `  ✗ ${m.name}: can't build next URL` + R); continue; }
         try {
-            const res = await fetch(next, { timeout: 10000 });
+            const res = await fetch(next, { signal: AbortSignal.timeout(10000) });
+            const nextNum = m.chapter + 1;
             if (res.status === 200 && res.url === next) {
-                console.log(G + B + `  ✓ ${m.name}: Chapter ${m.chapter + 1} is OUT!` + R);
+                const body = await res.text();
+                const titleTag = body.match(/<title[^>]*>([^<]*)<\/title>/i);
+                const title = titleTag ? titleTag[1] : '';
+                if (!new RegExp(`\\b${nextNum}\\b`).test(title)) {
+                    console.log(C + `  · ${m.name}: not yet  (checked chapter ${nextNum}, got ${res.status})` + R);
+                    continue;
+                }
+                console.log(G + B + `  ✓ ${m.name}: Chapter ${nextNum} is OUT!` + R);
                 console.log(C + `    → ${next}` + R);
-                m.chapter += 1;
+                m.chapter = nextNum;
                 m.url = next;
                 updated = true;
                 openUrl(next);
             } else {
-                console.log(C + `  · ${m.name}: not yet  (checked chapter ${m.chapter + 1}, got ${res.status})` + R);
+                console.log(C + `  · ${m.name}: not yet  (checked chapter ${nextNum}, got ${res.status})` + R);
             }
         } catch (e) {
             console.log(RE + `  ✗ ${m.name}: ${e.message}` + R);
