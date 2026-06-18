@@ -15,6 +15,18 @@ const R = '\x1b[0m', B = '\x1b[1m', G = '\x1b[32m', RE = '\x1b[31m', C = '\x1b[3
 function load() { try { return JSON.parse(fs.readFileSync(DATA, 'utf8')); } catch { return []; } }
 function save(list) { fs.writeFileSync(DATA, JSON.stringify(list, null, 2)); }
 
+function detectSite(url) {
+    if (url.includes('tcb')) return 'tcb';
+    if (url.includes('mangafire')) return 'mangafire';
+    return null;
+}
+
+function siteLabel(site) {
+    if (site === 'tcb')       return B + Y + '[TCB]' + R;
+    if (site === 'mangafire') return B + G + '[MF] ' + R;
+    return '[?]  ';
+}
+
 function buildNextUrl(url, chapter) {
     const s = String(chapter);
     const i = url.lastIndexOf(s);
@@ -22,29 +34,59 @@ function buildNextUrl(url, chapter) {
     return url.slice(0, i) + String(chapter + 1) + url.slice(i + s.length);
 }
 
+const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' };
+
+// TCB: URL slug uses -chapter-N (dash), so match without requiring leading slash
+async function checkTCB(url, nextNum) {
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000), headers: UA });
+    if (res.status !== 200) return null;
+    const m = res.url.match(/chapter-(\d+)/i);
+    return (m && parseInt(m[1]) === nextNum) ? res.url : null;
+}
+
+// MangaFire returns HTTP 200 for any URL, then JS-redirects missing chapters to chapter-1.
+// redirect:'manual' catches HTTP-level redirects (3xx → not out).
+// Body title check catches SPA-level redirects (page title reveals actual chapter loaded).
+async function checkMangaFire(url, nextNum) {
+    const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(10000), headers: UA });
+    if (res.status >= 300) return null;  // HTTP redirect = chapter not available
+    if (res.status !== 200) return null;
+
+    const body = await res.text();
+
+    // <title>Chapter 20 - Manga Name | MangaFire</title>  ← confirms which chapter loaded
+    const title = body.match(/<title[^>]*>(.*?)<\/title>/i);
+    if (title) {
+        const ch = title[1].match(/Chapter\s+(\d+)/i);
+        if (ch && parseInt(ch[1]) !== nextNum) return null;  // page loaded a different chapter
+    }
+
+    return url;
+}
+
 async function checkAll(list) {
     if (!list.length) { console.log(RE + 'No manga saved.' + R); return; }
     console.log(C + 'Checking...\n' + R);
     let updated = false;
     for (const m of list) {
-        const next = buildNextUrl(m.url, m.chapter);
-        if (!next) { console.log(RE + `  ✗ ${m.name}: can't build next URL` + R); continue; }
+        const site = m.site || detectSite(m.url);
+        const nextUrl = buildNextUrl(m.url, m.chapter);
+        if (!nextUrl) { console.log(RE + `  ✗ ${m.name}: can't build next URL` + R); continue; }
+        const nextNum = m.chapter + 1;
         try {
-            const res = await fetch(next, {
-                signal: AbortSignal.timeout(10000),
-                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' }
-            });
-            const nextNum = m.chapter + 1;
-            const urlChapter = res.url.match(/\/chapter-(\d+)/);
-            if (res.status === 200 && urlChapter && parseInt(urlChapter[1]) === nextNum) {
+            const found = site === 'tcb'
+                ? await checkTCB(nextUrl, nextNum)
+                : await checkMangaFire(nextUrl, nextNum);
+
+            if (found) {
                 console.log(G + B + `  ✓ ${m.name}: Chapter ${nextNum} is OUT!` + R);
-                console.log(C + `    → ${res.url}` + R);
+                console.log(C + `    → ${found}` + R);
                 m.chapter = nextNum;
-                m.url = res.url;
+                m.url = found;
                 updated = true;
-                openUrl(res.url);
+                openUrl(found);
             } else {
-                console.log(C + `  · ${m.name}: not yet  (checked chapter ${nextNum}, got ${res.status})` + R);
+                console.log(C + `  · ${m.name}: not yet  (checked chapter ${nextNum})` + R);
             }
         } catch (e) {
             console.log(RE + `  ✗ ${m.name}: ${e.message}` + R);
@@ -61,9 +103,10 @@ async function main() {
         const list = load();
         console.log('\n' + B + C + '─── MANGA WATCHER ───' + R);
         if (list.length) {
-            list.forEach((m, i) =>
-                console.log(C + `  [${i + 1}] ${B}${m.name}${R}${C}  –  Chapter ${m.chapter}` + R)
-            );
+            list.forEach((m, i) => {
+                const site = m.site || detectSite(m.url);
+                console.log(C + `  [${i + 1}] ${siteLabel(site)} ${B}${m.name}${R}${C}  –  Chapter ${m.chapter}` + R);
+            });
         } else {
             console.log(C + '  (no manga saved)' + R);
         }
@@ -76,14 +119,21 @@ async function main() {
         if (cmd === 'a') {
             const name = await ask('Name (e.g. One Piece): ');
             if (!name) { console.log(RE + 'Name cannot be empty.' + R); continue; }
+
+            console.log(Y + '  [1] TCB (tcbscans)' + R);
+            console.log(Y + '  [2] MangaFire' + R);
+            const siteChoice = await ask('Site (1/2): ');
+            const site = siteChoice === '1' ? 'tcb' : siteChoice === '2' ? 'mangafire' : null;
+            if (!site) { console.log(RE + 'Invalid choice.' + R); continue; }
+
             const url = await ask('Current chapter URL: ');
             if (!/^https?:\/\/.+\d/.test(url)) { console.log(RE + 'Invalid URL – must start with http(s):// and contain a chapter number.' + R); continue; }
             const raw = await ask('Current chapter number: ');
             const chapter = parseInt(raw, 10);
             if (isNaN(chapter)) { console.log(RE + 'Not a valid number.' + R); continue; }
-            list.push({ name, url, chapter });
+            list.push({ name, site, url, chapter });
             save(list);
-            console.log(G + `Saved "${name}" at chapter ${chapter}.` + R);
+            console.log(G + `Saved "${name}" (${site === 'tcb' ? 'TCB' : 'MangaFire'}) at chapter ${chapter}.` + R);
         }
 
         if (cmd === 'd') {

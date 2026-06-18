@@ -1,17 +1,14 @@
 [
   {
     "name": "OnePiece",
+    "site": "tcb",
     "url": "https://tcbonepiecechapters.com/chapters/7988/one-piece-chapter-1185",
     "chapter": 1185
   },
   {
     "name": "AniMan",
+    "site": "mangafire",
     "url": "https://mangafire.to/read/doubutsu-ningen.pmykj/en/chapter-18",
     "chapter": 18
-  },
-  {
-    "name": "Freaky",
-    "url": "https://mangafire.to/read/the-creepy-and-freaky.70w1j/en/chapter-7",
-    "chapter": 7
   }
 ]
