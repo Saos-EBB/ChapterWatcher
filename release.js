@@ -7,7 +7,7 @@ const { exec } = require('child_process');
 const DATA = path.join(__dirname, 'mangas.json');
 
 function openUrl(url) {
-    exec(`start "" "${url}"`);
+    exec(`xdg-open "${url}"`);
 }
 
 const R = '\x1b[0m', B = '\x1b[1m', G = '\x1b[32m', RE = '\x1b[31m', C = '\x1b[36m', Y = '\x1b[33m';
