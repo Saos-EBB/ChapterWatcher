@@ -77,6 +77,7 @@ Kevin Schaberl — SAOS
 - Site selection (TCB / MangaFire) on manga creation; `[TCB]` / `[MF]` prefix in list display
 - Fixed TCB check: regex now matches `-chapter-N` (dash) not just `/chapter-N` (slash)
 - Fixed MangaFire false positives: body title check catches JS-redirect to chapter 1
+- Fixed browser open on Linux: switched from `start` (Windows) to `xdg-open`
 
 ### 2026-06-17
 - Repo cleanup: flattened structure, removed `.idea` and `how-to-use.txt`
