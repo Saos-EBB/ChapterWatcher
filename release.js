@@ -91,6 +91,61 @@ async function checkAll(list) {
 const iface = rl.createInterface({ input: process.stdin, output: process.stdout });
 const ask   = (q) => new Promise(r => iface.question(q, a => r(a.trim())));
 
+async function cmdAdd(list) {
+    const name = await ask('Name (e.g. One Piece): ');
+    if (!name) { console.log(RE + 'Name cannot be empty.' + R); return; }
+    console.log(Y + '  [1] TCB (tcbscans)' + R);
+    console.log(Y + '  [2] MangaFire' + R);
+    const siteChoice = await ask('Site (1/2): ');
+    const site = siteChoice === '1' ? 'tcb' : siteChoice === '2' ? 'mangafire' : null;
+    if (!site) { console.log(RE + 'Invalid choice.' + R); return; }
+    const url = await ask('Current chapter URL: ');
+    if (!/^https?:\/\/.+\d/.test(url)) { console.log(RE + 'Invalid URL – must start with http(s):// and contain a chapter number.' + R); return; }
+    const raw = await ask('Current chapter number: ');
+    const chapter = parseInt(raw, 10);
+    if (isNaN(chapter)) { console.log(RE + 'Not a valid number.' + R); return; }
+    list.push({ name, site, url, chapter });
+    save(list);
+    console.log(G + `Saved "${name}" (${site === 'tcb' ? 'TCB' : 'MangaFire'}) at chapter ${chapter}.` + R);
+}
+
+async function cmdDelete(list) {
+    if (!list.length) { console.log(RE + 'Nothing to delete.' + R); return; }
+    const raw = await ask('Number to delete: ');
+    const idx = parseInt(raw, 10) - 1;
+    if (isNaN(idx) || idx < 0 || idx >= list.length) { console.log(RE + 'Invalid number.' + R); return; }
+    const [removed] = list.splice(idx, 1);
+    save(list);
+    console.log(G + `Deleted "${removed.name}".` + R);
+}
+
+async function cmdUpdate(list) {
+    if (!list.length) { console.log(RE + 'Nothing to update.' + R); return; }
+    const rawIdx = await ask('Number to update: ');
+    const idx = parseInt(rawIdx, 10) - 1;
+    if (isNaN(idx) || idx < 0 || idx >= list.length) { console.log(RE + 'Invalid number.' + R); return; }
+    const m = list[idx];
+    const rawChapter = await ask(`New chapter number for "${m.name}" (current: ${m.chapter}): `);
+    const chapter = parseInt(rawChapter, 10);
+    if (isNaN(chapter)) { console.log(RE + 'Not a valid number.' + R); return; }
+    m.url = buildNextUrl(m.url, m.chapter, chapter) ?? m.url;
+    m.chapter = chapter;
+    save(list);
+    console.log(G + `Updated "${m.name}" to chapter ${chapter}.` + R);
+}
+
+async function cmdCheck(list) {
+    const found = await checkAll(list);
+    for (const { manga, url } of found) {
+        manga.chapter += 1;
+        manga.url = url;
+        openUrl(url);
+    }
+    if (found.length) save(list);
+}
+
+const COMMANDS = { a: cmdAdd, d: cmdDelete, n: cmdUpdate, c: cmdCheck };
+
 async function main() {
     console.log('\n' + B + RE +
         ' ███████╗██╗   ██╗ ██████╗██╗  ██╗\n' +
@@ -120,63 +175,8 @@ async function main() {
         console.log(Y + '\n  [a] Add  [d] Delete  [n] Update chapter  [c] Check all  [q] Quit\n' + R);
 
         const cmd = (await ask(Y + '> ' + R)).toLowerCase();
-
         if (cmd === 'q') { iface.close(); process.exit(0); }
-
-        if (cmd === 'a') {
-            const name = await ask('Name (e.g. One Piece): ');
-            if (!name) { console.log(RE + 'Name cannot be empty.' + R); continue; }
-
-            console.log(Y + '  [1] TCB (tcbscans)' + R);
-            console.log(Y + '  [2] MangaFire' + R);
-            const siteChoice = await ask('Site (1/2): ');
-            const site = siteChoice === '1' ? 'tcb' : siteChoice === '2' ? 'mangafire' : null;
-            if (!site) { console.log(RE + 'Invalid choice.' + R); continue; }
-
-            const url = await ask('Current chapter URL: ');
-            if (!/^https?:\/\/.+\d/.test(url)) { console.log(RE + 'Invalid URL – must start with http(s):// and contain a chapter number.' + R); continue; }
-            const raw = await ask('Current chapter number: ');
-            const chapter = parseInt(raw, 10);
-            if (isNaN(chapter)) { console.log(RE + 'Not a valid number.' + R); continue; }
-            list.push({ name, site, url, chapter });
-            save(list);
-            console.log(G + `Saved "${name}" (${site === 'tcb' ? 'TCB' : 'MangaFire'}) at chapter ${chapter}.` + R);
-        }
-
-        if (cmd === 'd') {
-            if (!list.length) { console.log(RE + 'Nothing to delete.' + R); continue; }
-            const raw = await ask('Number to delete: ');
-            const idx = parseInt(raw, 10) - 1;
-            if (isNaN(idx) || idx < 0 || idx >= list.length) { console.log(RE + 'Invalid number.' + R); continue; }
-            const [removed] = list.splice(idx, 1);
-            save(list);
-            console.log(G + `Deleted "${removed.name}".` + R);
-        }
-
-        if (cmd === 'n') {
-            if (!list.length) { console.log(RE + 'Nothing to update.' + R); continue; }
-            const rawIdx = await ask('Number to update: ');
-            const idx = parseInt(rawIdx, 10) - 1;
-            if (isNaN(idx) || idx < 0 || idx >= list.length) { console.log(RE + 'Invalid number.' + R); continue; }
-            const m = list[idx];
-            const rawChapter = await ask(`New chapter number for "${m.name}" (current: ${m.chapter}): `);
-            const chapter = parseInt(rawChapter, 10);
-            if (isNaN(chapter)) { console.log(RE + 'Not a valid number.' + R); continue; }
-            m.url = buildNextUrl(m.url, m.chapter, chapter) ?? m.url;
-            m.chapter = chapter;
-            save(list);
-            console.log(G + `Updated "${m.name}" to chapter ${chapter}.` + R);
-        }
-
-        if (cmd === 'c') {
-            const found = await checkAll(list);
-            for (const { manga, url } of found) {
-                manga.chapter += 1;
-                manga.url = url;
-                openUrl(url);
-            }
-            if (found.length) save(list);
-        }
+        if (COMMANDS[cmd]) await COMMANDS[cmd](list);
     }
 }
 
