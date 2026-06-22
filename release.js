@@ -63,9 +63,9 @@ async function checkMangaFire(url, nextNum) {
 const SITES = { tcb: checkTCB, mangafire: checkMangaFire };
 
 async function checkAll(list) {
-    if (!list.length) { console.log(RE + 'No manga saved.' + R); return; }
+    if (!list.length) { console.log(RE + 'No manga saved.' + R); return []; }
     console.log(C + 'Checking...\n' + R);
-    let updated = false;
+    const found = [];
     for (const m of list) {
         const checker = SITES[m.site];
         if (!checker) { console.log(RE + `  ✗ ${m.name}: unknown site '${m.site}'` + R); continue; }
@@ -73,14 +73,11 @@ async function checkAll(list) {
         const nextUrl = buildNextUrl(m.url, m.chapter, nextNum);
         if (!nextUrl) { console.log(RE + `  ✗ ${m.name}: can't build next URL` + R); continue; }
         try {
-            const found = await checker(nextUrl, nextNum);
-            if (found) {
+            const url = await checker(nextUrl, nextNum);
+            if (url) {
                 console.log(G + B + `  ✓ ${m.name}: Chapter ${nextNum} is OUT!` + R);
-                console.log(C + `    → ${found}` + R);
-                m.chapter = nextNum;
-                m.url = found;
-                updated = true;
-                openUrl(found);
+                console.log(C + `    → ${url}` + R);
+                found.push({ manga: m, url });
             } else {
                 console.log(C + `  · ${m.name}: not yet  (checked chapter ${nextNum})` + R);
             }
@@ -88,7 +85,7 @@ async function checkAll(list) {
             console.log(RE + `  ✗ ${m.name}: ${e.message}` + R);
         }
     }
-    if (updated) save(list);
+    return found;
 }
 
 const iface = rl.createInterface({ input: process.stdin, output: process.stdout });
@@ -172,7 +169,13 @@ async function main() {
         }
 
         if (cmd === 'c') {
-            await checkAll(list);
+            const found = await checkAll(list);
+            for (const { manga, url } of found) {
+                manga.chapter += 1;
+                manga.url = url;
+                openUrl(url);
+            }
+            if (found.length) save(list);
         }
     }
 }
