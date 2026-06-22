@@ -15,12 +15,6 @@ const R = '\x1b[0m', B = '\x1b[1m', G = '\x1b[32m', RE = '\x1b[31m', C = '\x1b[3
 function load() { try { return JSON.parse(fs.readFileSync(DATA, 'utf8')); } catch { return []; } }
 function save(list) { fs.writeFileSync(DATA, JSON.stringify(list, null, 2)); }
 
-function detectSite(url) {
-    if (url.includes('tcb')) return 'tcb';
-    if (url.includes('mangafire')) return 'mangafire';
-    return null;
-}
-
 function siteLabel(site) {
     if (site === 'tcb')       return B + Y + '[TCB]' + R;
     if (site === 'mangafire') return B + G + '[MF] ' + R;
@@ -65,20 +59,21 @@ async function checkMangaFire(url, nextNum) {
     return url;
 }
 
+// ponytail: real seam — two adapters exist today, justified
+const SITES = { tcb: checkTCB, mangafire: checkMangaFire };
+
 async function checkAll(list) {
     if (!list.length) { console.log(RE + 'No manga saved.' + R); return; }
     console.log(C + 'Checking...\n' + R);
     let updated = false;
     for (const m of list) {
-        const site = m.site || detectSite(m.url);
+        const checker = SITES[m.site];
+        if (!checker) { console.log(RE + `  ✗ ${m.name}: unknown site '${m.site}'` + R); continue; }
         const nextNum = m.chapter + 1;
         const nextUrl = buildNextUrl(m.url, m.chapter, nextNum);
         if (!nextUrl) { console.log(RE + `  ✗ ${m.name}: can't build next URL` + R); continue; }
         try {
-            const found = site === 'tcb'
-                ? await checkTCB(nextUrl, nextNum)
-                : await checkMangaFire(nextUrl, nextNum);
-
+            const found = await checker(nextUrl, nextNum);
             if (found) {
                 console.log(G + B + `  ✓ ${m.name}: Chapter ${nextNum} is OUT!` + R);
                 console.log(C + `    → ${found}` + R);
@@ -120,8 +115,7 @@ async function main() {
         console.log('\n' + B + C + '─── MANGA WATCHER ───' + R);
         if (list.length) {
             list.forEach((m, i) => {
-                const site = m.site || detectSite(m.url);
-                console.log(C + `  [${i + 1}] ${siteLabel(site)} ${B}${m.name}${R}${C}  –  Chapter ${m.chapter}` + R);
+                console.log(C + `  [${i + 1}] ${siteLabel(m.site)} ${B}${m.name}${R}${C}  –  Chapter ${m.chapter}` + R);
             });
         } else {
             console.log(C + '  (no manga saved)' + R);
