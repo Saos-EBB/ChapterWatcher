@@ -31,32 +31,49 @@ function buildNextUrl(url, from, to) {
 
 const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' };
 
-// TCB: URL slug uses -chapter-N (dash), so match without requiring leading slash
-async function checkTCB(url, nextNum) {
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000), headers: UA });
+// TCB: chapter URLs are /chapters/{id}/...-chapter-{num}, but {id} isn't
+// derivable from {num} (ids get skipped, e.g. 7989 -> 1187 lands on id 7991,
+// not 7990), so guessing the next URL by incrementing num while reusing the
+// old id 404s/redirects back to the old chapter. Instead read the "Next"
+// nav link off the current chapter's page, which the site keeps accurate.
+async function checkTCB(m, nextNum) {
+    const res = await fetch(m.url, { signal: AbortSignal.timeout(10000), headers: UA });
     if (res.status !== 200) return null;
-    const m = res.url.match(/chapter-(\d+)/i);
-    return (m && parseInt(m[1]) === nextNum) ? res.url : null;
+    const html = await res.text();
+    const next = html.match(/<a\s+href="([^"]+)"[^>]*>\s*Next\s*<\/a>/i);
+    if (!next) return null;
+    const url = new URL(next[1], res.url).href;
+    const match = url.match(/chapter-(\d+)/i);
+    return (match && parseInt(match[1]) === nextNum) ? url : null;
 }
 
-// MangaFire returns HTTP 200 for any URL, then JS-redirects missing chapters to chapter-1.
-// redirect:'manual' catches HTTP-level redirects (3xx → not out).
-// Body title check catches SPA-level redirects (page title reveals actual chapter loaded).
-async function checkMangaFire(url, nextNum) {
-    const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(10000), headers: UA });
-    if (res.status >= 300) return null;  // HTTP redirect = chapter not available
+// MangaFire chapter URLs use opaque numeric IDs (/chapter/6927219), not the chapter
+// number, so the next chapter's URL can't be guessed by incrementing anymore. The site
+// is also a client-rendered SPA — fetching the page HTML returns an empty shell — so
+// instead call the same JSON API the frontend uses to load the chapter list.
+// URL slug is "{hid}-{name}", e.g. /title/pmykj-animan → hid "pmykj".
+function mangaFireHid(chapterUrl) {
+    const m = chapterUrl.match(/\/title\/([^/-]+)/);
+    return m ? m[1] : null;
+}
+
+function mangaFireTitleUrl(chapterUrl) {
+    return chapterUrl.replace(/\/chapter\/\d+.*$/, '');
+}
+
+async function checkMangaFire(m, nextNum) {
+    const hid = mangaFireHid(m.url);
+    if (!hid) return null;
+    const res = await fetch(`https://mangafire.to/api/titles/${hid}/chapters`, {
+        signal: AbortSignal.timeout(10000),
+        headers: { ...UA, Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+    });
     if (res.status !== 200) return null;
-
-    const body = await res.text();
-
-    // <title>Chapter 20 - Manga Name | MangaFire</title>  ← confirms which chapter loaded
-    const title = body.match(/<title[^>]*>(.*?)<\/title>/i);
-    if (title) {
-        const ch = title[1].match(/Chapter\s+(\d+)/i);
-        if (ch && parseInt(ch[1]) !== nextNum) return null;  // page loaded a different chapter
-    }
-
-    return url;
+    const { items } = await res.json();
+    const matches = (items || []).filter(c => c.language === 'en' && c.number === nextNum);
+    if (!matches.length) return null;
+    const chapter = matches.find(c => c.type === 'official') ?? matches[0];
+    return `${mangaFireTitleUrl(m.url)}/chapter/${chapter.id}`;
 }
 
 // ponytail: real seam — two adapters exist today, justified
@@ -70,10 +87,8 @@ async function checkAll(list) {
         const checker = SITES[m.site];
         if (!checker) { console.log(RE + `  ✗ ${m.name}: unknown site '${m.site}'` + R); continue; }
         const nextNum = m.chapter + 1;
-        const nextUrl = buildNextUrl(m.url, m.chapter, nextNum);
-        if (!nextUrl) { console.log(RE + `  ✗ ${m.name}: can't build next URL` + R); continue; }
         try {
-            const url = await checker(nextUrl, nextNum);
+            const url = await checker(m, nextNum);
             if (url) {
                 console.log(G + B + `  ✓ ${m.name}: Chapter ${nextNum} is OUT!` + R);
                 console.log(C + `    → ${url}` + R);

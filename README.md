@@ -13,7 +13,7 @@ Stores the current chapter URL and site for each manga. On check, it replaces th
 
 **TCB:** URL-based check — looks for `chapter-N` anywhere in the final URL (TCB uses `-chapter-N` with a dash, not a slash).
 
-**MangaFire:** Body-based check — MangaFire returns HTTP 200 for every URL regardless of whether the chapter exists, then JS-redirects to chapter 1 for missing ones. The check reads the page `<title>` to confirm which chapter actually loaded.
+**MangaFire:** API-based check — chapter URLs use opaque numeric IDs (`/chapter/6927219`), not the chapter number, so the next URL can't be guessed by incrementing. The site is also a client-rendered SPA, so fetching the page HTML returns an empty shell. Instead the check calls MangaFire's own JSON API (`/api/titles/{hid}/chapters`) to get the real chapter list and matches by chapter number.
 
 ---
 
@@ -56,8 +56,8 @@ Saved to `mangas.json` in the same folder:
   {
     "name": "AniMan",
     "site": "mangafire",
-    "url": "https://mangafire.to/read/doubutsu-ningen.pmykj/en/chapter-19",
-    "chapter": 19
+    "url": "https://mangafire.to/title/pmykj-animan/chapter/6927219",
+    "chapter": 17
   }
 ]
 ```
@@ -71,6 +71,10 @@ Kevin Schaberl — SAOS
 ---
 
 ## Changelog
+
+### 2026-07-22
+- Fixed MangaFire check: site switched chapter URLs to opaque numeric IDs (`/chapter/6927219`) and moved to a client-rendered SPA (page HTML no longer contains chapter data), breaking both the increment-based next-URL guess and the old body-title check
+- MangaFire check now calls the site's own JSON API (`/api/titles/{hid}/chapters`) to read the real chapter list and match by chapter number, preferring the official chapter when both an official and unofficial release share a number
 
 ### 2026-06-18
 - Per-site check methods: TCB uses URL match, MangaFire reads page title to detect false positives
